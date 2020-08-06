@@ -139,12 +139,44 @@ func (this *LevelDB) GetParsedInNode(node string, key string, i interface{}) err
 	return nil
 }
 
-func (this *LevelDB) Search(node string, list interface{}, q *Query) error {
+func (this *LevelDB) SearchInNode(node string, list interface{}, q *Query) error {
 	var filterRange *util.Range
 	if node != "" {
 		filterRange = util.BytesPrefix(BuildNodeKey(node, ""))
 	}
+	return this._search(filterRange, list, q)
+}
+func (this *LevelDB) Search(prefix string, list interface{}, q *Query) error {
+	var filterRange *util.Range
+	if prefix != "" {
+		filterRange = util.BytesPrefix([]byte(prefix))
+	}
 
+	return this._search(filterRange, list, q)
+}
+func (this *LevelDB) Range(prefix string, sufix string, list interface{}, q *Query) error {
+	filterRange := &util.Range{Start:[]byte(prefix), Limit:[]byte(sufix)}
+	return this._search(filterRange, list, q)
+}
+func (this *LevelDB) GetAllKeysByPrefix(prefix string)[]string{
+	iter := this.DB.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
+	iter.Last()
+	vv := iter.Key()	
+	data := []string{string(vv)}
+
+	for iter.Prev() {
+		vv := iter.Key()	
+		data = append(data, string(vv))
+	}
+	iter.Release()
+	err := iter.Error()
+	if err != nil {
+		return nil
+	}
+	return data
+
+}
+func (this *LevelDB) _search(filterRange *util.Range, list interface{}, q *Query) error{
 	iter := this.DB.NewIterator(filterRange, nil)
 	data := [][]byte{}
 	
