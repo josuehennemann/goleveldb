@@ -19,6 +19,7 @@ type LevelDB struct {
 type Query struct {
 	Page        int
 	PerPage     int
+	KeyContains []byte
 	filterIn    string
 	filterValue interface{}
 	start       int
@@ -30,14 +31,30 @@ func (q *Query) FilterIn(field string, value interface{}) {
 	q.filterIn = field
 	q.filterValue = value
 }
-func (q *Query) Contains(v []byte) bool{
+func (q *Query) Contains(v []byte) bool {
 	if len(q.valueSearch) == 0 {
 		return true
 	}
-	
 	return bytes.Contains(v, q.valueSearch)
 }
+func (q *Query) SetAll() {
+	q.Page = -1
+	q.PerPage = -1
+}
+func (q *Query) ContainsInKey(v []byte) bool {
+	if len(q.KeyContains) == 0 {
+		return true
+	}
+
+	return bytes.Contains(v, q.KeyContains)
+}
+func (q *Query) isAll() bool {
+	return q.Page == -1 && q.PerPage == -1
+}
 func (q *Query) makePaginate() {
+	if q.isAll() {
+		return
+	}
 	if q.Page <= 0 {
 		q.Page = 0
 	}
@@ -52,14 +69,14 @@ func (q *Query) makeQuerySearch() {
 		return
 	}
 	value := ""
-	switch v := q.filterValue.(type){
+	switch v := q.filterValue.(type) {
 	case string:
 		value = fmt.Sprintf("\"%s", v)
 	default:
 		value = fmt.Sprintf("%v", v)
 	}
-	
-	q.valueSearch = []byte(`"`+q.filterIn+`":`+value)
+
+	q.valueSearch = []byte(`"` + q.filterIn + `":` + value)
 }
 func OpenFile(path string, o *opt.Options) (*LevelDB, error) {
 	db, err := leveldb.OpenFile(path, nil)
@@ -155,17 +172,17 @@ func (this *LevelDB) Search(prefix string, list interface{}, q *Query) error {
 	return this._search(filterRange, list, q)
 }
 func (this *LevelDB) Range(prefix string, sufix string, list interface{}, q *Query) error {
-	filterRange := &util.Range{Start:[]byte(prefix), Limit:[]byte(sufix)}
+	filterRange := &util.Range{Start: []byte(prefix), Limit: []byte(sufix)}
 	return this._search(filterRange, list, q)
 }
-func (this *LevelDB) GetAllKeysByPrefix(prefix string)[]string{
+func (this *LevelDB) GetAllKeysByPrefix(prefix string) []string {
 	iter := this.DB.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
 	iter.Last()
-	vv := iter.Key()	
+	vv := iter.Key()
 	data := []string{string(vv)}
 
 	for iter.Prev() {
-		vv := iter.Key()	
+		vv := iter.Key()
 		data = append(data, string(vv))
 	}
 	iter.Release()
@@ -176,10 +193,10 @@ func (this *LevelDB) GetAllKeysByPrefix(prefix string)[]string{
 	return data
 
 }
-func (this *LevelDB) _search(filterRange *util.Range, list interface{}, q *Query) error{
+func (this *LevelDB) _search(filterRange *util.Range, list interface{}, q *Query) error {
 	iter := this.DB.NewIterator(filterRange, nil)
 	data := [][]byte{}
-	
+
 	if q != nil {
 		q.makeQuerySearch()
 		q.makePaginate()
@@ -189,15 +206,22 @@ func (this *LevelDB) _search(filterRange *util.Range, list interface{}, q *Query
 	for iter.Next() {
 		vv := iter.Value()
 		if q != nil {
-			if  !q.Contains(vv) {
-				continue
-			}
-			if q.start > count {
+			if !q.ContainsInKey(iter.Key()) {
 				continue
 			}
 
-			if count >= q.end {
-				break
+			if !q.Contains(vv) {
+				continue
+			}
+			if !q.isAll() {
+				if q.start > count {
+					count++
+					continue
+				}
+
+				if count >= q.end {
+					break
+				}
 			}
 
 		}
@@ -233,27 +257,33 @@ func (this *LevelDB) Read(node string, q *Query) chan []byte {
 	ch := make(chan []byte, 0)
 	iter := this.DB.NewIterator(filterRange, nil)
 
-
 	if q != nil {
 		q.makeQuerySearch()
 		q.makePaginate()
 
 	}
-	
+
 	go func() {
 		count := 0
 		for iter.Next() {
 			vv := iter.Value()
 			if q != nil {
-				if !q.Contains(vv) {	
-					continue
-				}
-				if q.start > count {
+				if !q.ContainsInKey(iter.Key()) {
 					continue
 				}
 
-				if count >= q.end {
-					break
+				if !q.Contains(vv) {
+					continue
+				}
+				if !q.isAll() {
+					if q.start > count {
+						count++
+						continue
+					}
+
+					if count >= q.end {
+						break
+					}
 				}
 
 			}
