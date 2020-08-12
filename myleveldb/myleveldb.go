@@ -175,15 +175,21 @@ func (this *LevelDB) Range(prefix string, sufix string, list interface{}, q *Que
 	filterRange := &util.Range{Start: []byte(prefix), Limit: []byte(sufix)}
 	return this._search(filterRange, list, q)
 }
-func (this *LevelDB) GetAllKeysByPrefix(prefix string) []string {
+func (this *LevelDB) GetAllKeysByPrefix(prefix string, sufixKey string) []string {
 	iter := this.DB.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
 	iter.Last()
 	vv := iter.Key()
-	data := []string{string(vv)}
+	data := []string{}
+	if bytes.HasSuffix(vv, []byte(sufixKey)){
+		data = append(data, string(vv))
+	}
+
 
 	for iter.Prev() {
 		vv := iter.Key()
-		data = append(data, string(vv))
+		if bytes.HasSuffix(vv, []byte(sufixKey)){
+			data = append(data, string(vv))
+		}
 	}
 	iter.Release()
 	err := iter.Error()
