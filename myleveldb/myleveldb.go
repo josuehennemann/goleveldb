@@ -25,6 +25,7 @@ type Query struct {
 	start       int
 	end         int
 	valueSearch []byte
+	Reverse 	bool
 }
 
 func (q *Query) FilterIn(field string, value interface{}) {
@@ -202,15 +203,22 @@ func (this *LevelDB) GetAllKeysByPrefix(prefix string, sufixKey string) []string
 func (this *LevelDB) _search(filterRange *util.Range, list interface{}, q *Query) error {
 	iter := this.DB.NewIterator(filterRange, nil)
 	data := [][]byte{}
-
+	reverse := false
 	if q != nil {
 		q.makeQuerySearch()
 		q.makePaginate()
+		reverse = q.Reverse
+	}
 
+	if reverse{
+		iter.Last()
+		vv := iter.Value()
+		data = append(data, vv)
 	}
 	count := 0
-	for iter.Next() {
+	for ((!reverse && iter.Next()) || (reverse && iter.Prev())) {
 		vv := iter.Value()
+
 		if q != nil {
 			if !q.ContainsInKey(iter.Key()) {
 				continue

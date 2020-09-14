@@ -75,6 +75,16 @@ func BenchmarkSearchWithCondition(b *testing.B) {
 	}
 }
 
+func BenchmarkSearchWithConditionReverse(b *testing.B) {
+	load()
+	q2 := *q
+	q2.Reverse = true
+	for n := 0; n < b.N; n++ {
+		list := []Teste{}
+		testeDB.Search("NODE-1", &list, &q2)
+	}
+}
+
 func BenchmarkReadWithCondition(b *testing.B) {
 	load()
 	for n := 0; n < b.N; n++ {
